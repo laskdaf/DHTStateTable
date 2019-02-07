@@ -15,11 +15,14 @@ contract DHTStateTable {
 
     enum NodeState {NonExistent, OnboardPending, Onboarded, Offboarded, Banned}
 
-    event Onboard(address nodeAddress, bytes32 pubKey, bytes32 certificate, bytes32 ip, uint256 port, uint256 nonce);
+    event Onboard(address nodeAddress, bytes32 pubKey, bytes32 certificate, bytes32 ip, uint256 port, uint256 nonce, uint256 numNodes);
     event SafeOffboard(address nodeAddress);
     event OffboardPoll(address nodeAddress);
 
     struct node {
+        address addr;
+        uint256 nodeIndex;
+
         bytes32 pubKey;
         bytes32 certificate;
         bytes32 ip;
@@ -34,6 +37,7 @@ contract DHTStateTable {
         NodeState state;
     }
     mapping(address => node) nodes;
+    mapping(uint256 => address) nodeIndexes;
 
     struct offBoardPoll {
         address nodeAddress;
@@ -110,6 +114,9 @@ contract DHTStateTable {
         uint256 port = inputs[3].toUint();
 
         nodes[msg.sender] = node({
+            addr: msg.sender,
+            nodeIndex: 0,
+
             pubKey: pubKey,
             certificate: certificate,
             ip: ip,
@@ -138,11 +145,33 @@ contract DHTStateTable {
     {
         bytes32 rng = sha256(abi.encodePacked(blockhash(block.number), nodes[msg.sender].seed));
         nodes[msg.sender].nonce = uint256(sha256(abi.encodePacked(nodes[msg.sender].h1, rng)));
+        nodes[msg.sender].nodeIndex = numNodes;
         nodes[msg.sender].state = NodeState.Onboarded;
 
-        numNodes += 1;
+        nodeIndexes[numNodes] = msg.sender;
 
-        emit Onboard(msg.sender, nodes[msg.sender].pubKey, nodes[msg.sender].certificate, nodes[msg.sender].ip, nodes[msg.sender].port, nodes[msg.sender].nonce);
+        emit Onboard(msg.sender, nodes[msg.sender].pubKey, nodes[msg.sender].certificate, nodes[msg.sender].ip, nodes[msg.sender].port, nodes[msg.sender].nonce, numNodes);
+        numNodes += 1;
+    }
+
+    // Remove a node from nodeIndexes and reassign indexes if need be
+    function removeNode(address nodeAddress)
+        private
+    {
+        uint256 index = nodes[nodeAddress].nodeIndex;
+
+        require(index < numNodes, "something is super wrong.");
+
+        if (index == numNodes - 1) {
+            delete nodeIndexes[index];
+        } else {
+            nodeIndexes[index] = nodeIndexes[numNodes - 1];
+            delete nodeIndexes[numNodes - 1];
+
+            nodes[nodeIndexes[index]].nodeIndex = index;
+        }
+
+        numNodes -= 1;
     }
 
     // A node can safely off board itself.
@@ -153,7 +182,8 @@ contract DHTStateTable {
         nodes[msg.sender].state = NodeState.Offboarded;
         emit SafeOffboard(msg.sender);
 
-        numNodes -= 1;
+        removeNode(msg.sender);
+
         msg.sender.transfer(minBond);
     }
 
@@ -194,7 +224,7 @@ contract DHTStateTable {
         require(polls[nodeAddress].createdAt + 1 weeks < block.timestamp, "The poll is still occuring.");
         if (polls[nodeAddress].numVotesForRemove > numNodes / 2) {
             nodes[nodeAddress].state = NodeState.Banned;
-            numNodes -= 1;
+            removeNode(nodeAddress);
         }
     }
 
@@ -207,7 +237,11 @@ contract DHTStateTable {
     // uint256 port
     // uint256 nonce
     function getNodeState(address nodeAddress) public view returns(address, bytes32, bytes32, bytes32, uint256, uint256, NodeState) {
-        return (nodeAddress, nodes[nodeAddress].pubKey, nodes[nodeAddress].certificate, nodes[nodeAddress].ip, nodes[nodeAddress].port, nodes[nodeAddress].nonce, nodes[nodeAddress].state);
+        return (nodes[nodeAddress].addr, nodes[nodeAddress].pubKey, nodes[nodeAddress].certificate, nodes[nodeAddress].ip, nodes[nodeAddress].port, nodes[nodeAddress].nonce, nodes[nodeAddress].state);
+    }
+
+    function getNodeAddressByIndex(uint256 index) public view returns (address) {
+        return nodeIndexes[index];
     }
 
     function getNumNodes() public view returns(uint256) {

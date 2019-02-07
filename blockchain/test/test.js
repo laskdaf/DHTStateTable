@@ -51,7 +51,10 @@ contract('DHT', async (accounts) => {
         assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
         // Verify the DHT currently has 1 node
         let numNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(numNodes, 1, "incorrect number of nodes.")
+        assert.equal(numNodes, 1, "incorrect number of nodes.");
+        // Verify the node at count 0 is the one just onboarded.
+        let nodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(nodeAddress, accounts[1], "incorrect address");
     });
 
     it("fails on invalid startOnboards", async () => {
@@ -104,7 +107,10 @@ contract('DHT', async (accounts) => {
         assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
         // Verify the DHT currently has 1 node
         let numNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(numNodes, 1, "incorrect number of nodes.")
+        assert.equal(numNodes, 1, "incorrect number of nodes.");
+        // Verify the node at count 0 is the one just onboarded.
+        let nodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(nodeAddress, accounts[1], "incorrect address");
 
         // Safely Offboard Node
         await instance.safeOffboard({from: accounts[1]});
@@ -114,7 +120,10 @@ contract('DHT', async (accounts) => {
         assert.equal(newNodeState[6].toNumber(), 3, "node has not been offboarded");
         // Verify the DHT currently has 0 nodes
         let newNumNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(newNumNodes, 0, "incorrect number of nodes")
+        assert.equal(newNumNodes, 0, "incorrect number of nodes");
+        // Verify the node at count 0 has been removed
+        let newNodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(newNodeAddress, "0x0000000000000000000000000000000000000000", "address not removed");
     });
 
     it("successfully vote out node if enough votes", async () => {
@@ -130,7 +139,10 @@ contract('DHT', async (accounts) => {
         assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
         // Verify the DHT currently has 1 node
         let numNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(numNodes, 1, "incorrect number of nodes.")
+        assert.equal(numNodes, 1, "incorrect number of nodes.");
+        // Verify the node at count 0 is the one just onboarded.
+        let nodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(nodeAddress, accounts[1], "incorrect address");
 
         // Begin process to vote out node
         await instance.beginOffboardVote(accounts[1], {from: accounts[1]});
@@ -146,7 +158,10 @@ contract('DHT', async (accounts) => {
         assert.equal(newNodeState[6].toNumber(), 4, "incorrect was not banned");
         // Verify the DHT currently has 0 nodes
         let newNumNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(newNumNodes, 0, "incorrect number of nodes")
+        assert.equal(newNumNodes, 0, "incorrect number of nodes");
+        // Verify the node at count 0 has been removed
+        let newNodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(newNodeAddress, "0x0000000000000000000000000000000000000000", "address not removed");
     });
 
     it("won't vote out node if not enough votes", async () => {
@@ -162,7 +177,10 @@ contract('DHT', async (accounts) => {
         assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
         // Verify the DHT currently has 1 node
         let numNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(numNodes, 1, "incorrect number of nodes")
+        assert.equal(numNodes, 1, "incorrect number of nodes");
+        // Verify the node at count 0 is the one just onboarded.
+        let nodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(nodeAddress, accounts[1], "incorrect address");
 
         // Begin process to vote out node
         await instance.beginOffboardVote(accounts[1], {from: accounts[1]});
@@ -176,7 +194,10 @@ contract('DHT', async (accounts) => {
         assert.equal(newNodeState[6].toNumber(), 2, "node should not have banned");
         // Verify the DHT currently has 1 node
         let newNumNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(newNumNodes, 1, "incorrect number of nodes")
+        assert.equal(newNumNodes, 1, "incorrect number of nodes");
+        // Verify the node at count 0 hasn't changed.
+        let newNodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(newNodeAddress, accounts[1], "incorrect address");
     });
 
     it("fails if poll is finalized before time limit", async () => {
@@ -192,7 +213,10 @@ contract('DHT', async (accounts) => {
         assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
         // Verify the DHT currently has 1 node
         let numNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(numNodes, 1, "incorrect number of nodes")
+        assert.equal(numNodes, 1, "incorrect number of nodes");
+        // Verify the node at count 0 is the one just onboarded.
+        let nodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(nodeAddress, accounts[1], "incorrect address");
 
         // Begin process to vote out node
         await instance.beginOffboardVote(accounts[1], {from: accounts[1]});
@@ -209,6 +233,64 @@ contract('DHT', async (accounts) => {
         assert.equal(newNodeState[6].toNumber(), 2, "node should not have banned");
         // Verify the DHT currently has 1 node
         let newNumNodes = (await instance.getNumNodes.call()).toNumber();
-        assert.equal(newNumNodes, 1, "incorrect number of nodes")
+        assert.equal(newNumNodes, 1, "incorrect number of nodes");
+        // Verify the node at count 0 hasn't changed.
+        let newNodeAddress = (await instance.getNodeAddressByIndex.call(0)).toString();
+        assert.equal(newNodeAddress, accounts[1], "incorrect address");
+    });
+
+    it("successfully onboards 5 nodes and offboards 2 nodes", async () => {
+        var i;
+        for (i = 1; i <= 5; i++) {
+            dummyInputsSig = toHex(await web3.eth.sign(dummyInputsHash, accounts[i]));
+
+            // Initiate start onboard
+            await instance.startOnboard(dummyInputsBytes, dummyInputsSig, {from: accounts[i], value: 10000});
+            // Fast forward 5 blocks
+            await fastForwardBlocks(accounts[0], accounts[i], 5);
+            // Finalize Onboarding
+            await instance.finalizeOnboard({from: accounts[i]});
+
+            // Verify Node information is correct
+            let nodeState = await instance.getNodeState.call(accounts[i]);
+            assert.equal(nodeState[0], accounts[i], "incorrect node address stored");
+            assert.equal(toHex(nodeState[1]), dummyPubKey, "incorrect node pubKey stored");
+            assert.equal(toHex(nodeState[2]), dummyCertificate, "incorrect node certificate stored");
+            assert.equal(nodeState[3].toString(), dummyIPAddress, "incorrect node IP Address stored");
+            assert.equal(nodeState[4].toNumber(), dummyPortNumber, "incorrect node port number stored");
+            assert.equal(nodeState[6].toNumber(), 2, "incorrect node state");
+            // Verify the DHT currently has 1 node
+            let numNodes = (await instance.getNumNodes.call()).toNumber();
+            assert.equal(numNodes, i, "incorrect number of nodes.");
+            // Verify the node at count 0 is the one just onboarded.
+            let nodeAddress = (await instance.getNodeAddressByIndex.call(i - 1)).toString();
+            assert.equal(nodeAddress, accounts[i], "incorrect address");
+        }
+
+        // Safely Offboard Node
+        await instance.safeOffboard({from: accounts[4]});
+        // Verify Node state is correct
+        let newNodeState = await instance.getNodeState.call(accounts[4]);
+        assert.equal(newNodeState[6].toNumber(), 3, "node has not been offboarded");
+
+        // Safely Offboard Node
+        await instance.safeOffboard({from: accounts[2]});
+        // Verify Node state is correct
+        newNodeState = await instance.getNodeState.call(accounts[2]);
+        assert.equal(newNodeState[6].toNumber(), 3, "node has not been offboarded");
+
+        // Get all the active nodes in the DHT
+        let numNodes = (await instance.getNumNodes.call()).toNumber();
+        let remainingNodes = []
+        for (i = 0; i < numNodes; i++)  {
+            let nodeAddress = (await instance.getNodeAddressByIndex.call(i)).toString();
+            // assert.equal(nodeAddress, accounts[i], "incorrect address");
+            // console.log(nodeAddress);
+            remainingNodes.push(nodeAddress);
+        }
+
+        assert.deepInclude(remainingNodes, accounts[1]);
+        assert.deepInclude(remainingNodes, accounts[3])
+        assert.deepInclude(remainingNodes, accounts[5])
     });
 });
